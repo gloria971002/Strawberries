@@ -1,0 +1,491 @@
+---
+title: "STRAWBERRIES"
+author: "Chun Gao"
+date: "10/19/2020"
+output: html_document
+---
+
+
+Introduction:
+
+As mentioned in class, we’re going to finish Unit 1 by doing the “berries” dataset. In the project, we need to clean, organize the data and do the EDA. 
+
+```{r setup, include=FALSE, warning=FALSE, message=FALSE}
+library(knitr)
+library(tidyverse)
+library(magrittr)
+library(kableExtra)
+
+opts_chunk$set(echo = FALSE, 
+               warning = FALSE,
+               message = FALSE)
+```
+
+##  Acquire and read the data
+
+These data were collected from the USDA database selector: <a href="https://quickstats.nass.usda.gov">https://quickstats.nass.usda.gov</a>
+
+The data were <a href="https://quickstats.nass.usda.gov/results/D416E96E-3D5C-324C-9334-1D38DF88FFF1">stored online</a> and then downloaded as a CSV file.
+
+```{r}
+
+## read the data
+
+ag_data <- read_csv("C:/Users/32631/Desktop/A BU/A615/G Strawberries/berries.csv", col_names = TRUE)
+## look at number of unique values in each column
+ag_data %>% summarize_all(n_distinct) -> aa
+
+
+## make a list of the columns with only one unique value
+bb <- which(aa[1,]==1)
+
+## list the 1-unique valu column names 
+cn <- colnames(ag_data)[bb]
+
+```
+
+Data selected from the NASS database often has columns without any data or with a single repeated Values.  The berries data had only 8 out of 21 columns containing meaningful data.
+
+```{r}
+## remove the 1-unique columns from the dataset
+ag_data %<>% select(-all_of(bb))
+
+aa %<>% select(-all_of(bb)) 
+
+## State name and the State ANSI code are (sort of) redundant
+## Just keep the name
+ag_data %<>% select(-4)
+aa %<>% select(-4) 
+
+kable(head(ag_data)) %>%
+  kable_styling(font_size=12)
+
+```
+
+```{r}
+berry <- unique(ag_data$Commodity)
+nberry <- length(berry)
+```
+
+This table contains informaton about `r nberry` berries: blueberries, raspberries, and strawberries.
+
+When the data have been cleaned and organized, the three kinds of berries will be separted into tables with the same stucture so that they can be compared.  So, working with Blueberries along demonstrates how the data will be cleaned and organized for all three kinds of berries. Only the "YEAR" time periond will be considered.
+
+## STRAWBERRIES
+## Compred with raspberries, I like strawberries. So I choose strawberries as my picked commodity.
+```{r}
+sberry <- ag_data %>% filter((Commodity=="STRAWBERRIES") & (Period=="YEAR"))
+sberry %<>% select(-c(Period, Commodity))   
+
+#### Does every Data Item begin with "STRAWBERRIES,"
+sum(str_detect(sberry$`Data Item`, "^STRAWBERRIES,")) == length(sberry$`Data Item`)
+#FALSE
+
+# di <- sberry$`Data Item`
+# di_m <- str_split(di, ",", simplify=TRUE)
+# dim(di_m)
+# 
+# unique(di_m[,1])
+# di_m <- di_m[,2:4]
+
+####work on `Data Item`
+#divide the detaset into two parts according to whether `Data Item` data start with "STRAWBERRIES, " or "STRAWBERRIES -"
+sberry_a <- subset(sberry, str_detect(sberry$`Data Item`, "^STRAWBERRIES, ") == "TRUE")
+sberry_b <- subset(sberry, str_detect(sberry$`Data Item`, "^STRAWBERRIES, ") == "FALSE")
+sberry_a %<>% separate(`Data Item`, c("S","type", "meas", "what"), sep = ",") 
+sberry_b %<>% separate(`Data Item`, c("S","TYPE"), sep = " - ")
+sberry_b %<>% separate(`TYPE`, c("type","meas", "what"), sep = ",") 
+sberry <- rbind(sberry_a, sberry_b)
+sberry %<>% select(-S)
+#Since we have filter the commodity = STRAWBERRIES, so we can delete the "S" variable.
+
+#####
+unique(sberry$type)
+unique(sberry$meas)
+unique(sberry$what)
+
+####work on type
+sberry[is.na(sberry)] <- " " 
+# head(sberry$type, n=20)
+# ty <- str_split(sberry$type, " ", simplify=TRUE)
+# head(ty, n=20)
+sberry_a <- subset(sberry, str_detect(sberry$`type`, " - ") == "TRUE")
+sberry_a %<>% separate(type,c("type", "lab1"), sep = " - ")
+#unique(sberry_a$type)
+#[1] " BEARING"      " FRESH MARKET" " NOT SOLD"     " PROCESSING"   " UTILIZED"    
+#we should delete the blank before the data
+sberry_a %<>% separate(type,c("b1", "type"), sep = " ")
+
+sberry_b <- subset(sberry, type == " FRESH MARKET")
+sberry_b$type <- "FRESH MARKET"
+sberry_c <- subset(sberry, type == " PROCESSING")
+sberry_c$type <- "PROCESSING"
+#we need to put "FRESH MARKET" and "PROCESSING" into variable "type"
+
+sberry_d <- subset(sberry, str_detect(sberry$`type`, " - ") == "FALSE" & 
+                    type != " FRESH MARKET" & type != " PROCESSING")
+#we subset the sberry_d which contain the rest of dataset
+unique(sberry_d$type)
+sberry_d %<>% separate(type,c("lab1", "lab2"), " ")
+unique(sberry_d$lab1)
+#[1] "ACRES"      "PRODUCTION" "YIELD"     
+unique(sberry_d$lab2)
+#[1] "HARVESTED" "PLANTED"   NA   
+
+sberry <- plyr::rbind.fill(sberry_a, sberry_b, sberry_c, sberry_d)
+#recombine the 4 parts into the sberry
+sberry[is.na(sberry)] <- ""
+
+sberry %<>% select(-c(b1)) 
+```
+
+
+```{r}
+## now Domain
+
+#Prepare for separating Domain
+di <- sberry$Domain
+di_m <- str_split(di, ",", simplify=TRUE)
+dim(di_m)
+#3220    2
+sberry %<>% separate(Domain, c("D_left", "D_right"), sep = ", ")
+# bberry$D_left %>% unique()
+# bberry$D_right %>% unique()
+
+
+## And now Domain Category
+
+#Prepare for separating Domain Category
+dci <- sberry$`Domain Category`
+dci_m <- str_split(di, ",", simplify=TRUE)
+dim(dci_m)
+#3220    2
+## bberry$`Domain Category` %>% unique()
+sberry %<>% separate(`Domain Category`, c("DC_left", "DC_right"), sep = ", ")
+
+sberry[is.na(sberry)] <- " "
+
+## looks like DC_left combines labels
+
+#head(sberry$DC_left %>% unique(),n=20)
+#head(sberry$DC_right %>% unique(), n=20)
+
+# unique(sberry$DC_left)
+# "CHEMICAL, INSECTICIDE: (CYFLUMETOFEN�= 138831)"  
+# There are some data were put in wrong varaible, we should do some modification.
+sberry$DC_right[which(str_detect(sberry$DC_left,"138831"))]="INSECTICIDE: (CYFLUMETOFEN = 138831)"
+sberry$DC_left[which(str_detect(sberry$DC_left,"138831"))]="CHEMICAL"
+
+## work on DC_left first
+# dli <- sberry$DC_left
+# dli_m <- str_split(dli, ": ", simplify=TRUE)
+# dim(dli_m)
+# 3220    2
+sberry %<>% separate(DC_left, c("DC_left_l", "DC_left_r"), sep = ": ")
+## bberry$DC_left_l %>% unique()
+## bberry$DC_left_r %>% unique()
+
+## now work on DC_right
+#head(sberry$DC_right %>% unique(), n=20)
+# dri <- sberry$DC_right
+# dri_m <- str_split(dri, ": ", simplify=TRUE)
+# dim(dri_m)
+# 3220    2
+sberry %<>% separate(DC_right, c("DC_right_l", "DC_right_r"), sep = ": ") 
+
+sberry[is.na(sberry)] <- " "
+##  OK now we need to eliminate the redundancy
+```
+
+
+
+```{r}
+## fine and remove redundant columns
+paste(sberry$D_left,sberry$DC_left_l) %>% unique
+# returns -- "TOTAL NOT SPECIFIED"   "CHEMICAL CHEMICAL"     "FERTILIZER FERTILIZER"
+# remove column sberry$DC_left_l
+sberry %<>%  select(-DC_left_l) 
+
+## test
+sum(sberry$D_right == sberry$DC_right_l)
+# [1] 3220
+
+unique(sberry$DC_left_r)
+# [1] " "           "(NITROGEN)"  "(PHOSPHATE)" "(POTASH)"    "(SULFUR)"   
+
+## remove column DC_right_l
+sberry %<>% select(-DC_right_l)
+
+
+## Test for lab1, lab2
+paste(sberry$lab1, sberry$lab2) %>% unique()
+# [1] "APPLICATIONS "   "TREATED "        "PRODUCTION "     " "               "ACRES HARVESTED"
+# [6] "ACRES PLANTED"   "YIELD "    
+
+sberry %<>% mutate(label = paste(lab1,lab2)) 
+
+
+## test for necessity of "chemical" in col D_left
+paste(sberry$D_left, sberry$D_right) %>% unique()
+#[1] "CHEMICAL FUNGICIDE"   "CHEMICAL HERBICIDE"   "CHEMICAL INSECTICIDE" "CHEMICAL OTHER"      
+#[5] "FERTILIZER  "         "TOTAL  "   
+
+
+## remove "Chemical" and joint the columns
+sberry$D_left[which(sberry$D_left=="CHEMICAL")]<- ""
+#the same as sberry %<>% mutate(D_left = "CHEMICAL", D_left = "") 
+paste(sberry$D_left, sberry$D_right) %>% unique()
+sberry %<>%  mutate(Chemical = paste(sberry$D_left, sberry$D_right)) 
+sberry %<>% select(-c(D_left, D_right)) 
+
+sberry %<>% select(Year, State, type, what, meas, label, DC_left_r, DC_right_r, Chemical, Value )
+```
+
+
+```{r}
+###  Now the problem is that we have entries in both the "what" and "meas" columns
+##  that begin  "MEASURED IN"
+##  how many are there
+
+## in the column "what"
+cnt_1 <- str_detect(sberry$what, "MEASURED IN")
+sum(cnt_1)
+
+## in the column "meas"
+cnt_2 <- str_detect(sberry$meas, "MEASURED IN")
+sum(cnt_2)
+
+## We want to put them all in the same column
+## So, we will separate them from their current column and put them into
+## two columns -- then we will test to make sure there aren't any overlaps
+## and then merge the two columns
+
+## we're going to use PURRR.  We need a simple function that takes a logical
+## variable and a second variable.  It returns the second variable if the logical
+## variable is true and returns a blank if it is false
+
+
+f1 <- function(a,b){
+  if(a){
+    return(b)
+  }else{
+      return("")
+  }
+}
+#################################################
+##  try it
+
+f1(TRUE,"hi")
+
+f1(!TRUE, "hi")
+
+## now try it with map2()
+
+f1_log <- c(FALSE, TRUE, TRUE)
+f1_str <- c("one", "two", "three")
+
+map2(f1_log, f1_str, f1)
+
+#########################################################
+## now let's separate the "MEASURED IN" entries in the meas column
+## form an index of the entries to be separated out
+
+index_meas <- str_detect(sberry$meas, "MEASURED IN")
+
+## verify the first six values against the dats sberry
+head(index_meas)
+new <- map2(index_meas, sberry$meas, f1)
+new <- unlist(new)
+head(new, n=20)
+######################################################
+
+sberry %<>% mutate(m_in_1 = unlist(map2(index_meas, sberry$meas, f1))) 
+sberry %<>% mutate(meas = str_replace(sberry$meas, "MEASURED IN.*$", ""))
+
+## Check
+cnt_3 <- str_detect(sberry$meas, "MEASURED IN")
+sum(cnt_3)
+# 0
+
+#########################
+## Now we will do the same thing with the 
+## "what" column  
+
+### index of cells to be isolated
+index_what <- str_detect(sberry$what, "MEASURED IN")
+sum(index_what)
+
+### create a column of the isolated cells
+sberry %<>% mutate(m_in_2 = unlist(map2(index_what, sberry$what, f1))) 
+
+###  eliminate the isolated cells from the original column
+sberry %<>% mutate(what = str_replace(sberry$what, "MEASURED IN.*$", ""))
+
+### test that theere are no more "MEASURED IN" cells in the original column
+cnt_what <- str_detect(sberry$what, "MEASURED IN")
+sum(cnt_what)
+# 0
+
+
+### Check for overlaps
+sberry %<>% mutate(units = str_trim(paste(m_in_1, m_in_2))) 
+sberry$units %>% unique()
+```
+
+
+
+
+```{r}
+
+## now let's clean it up 
+sberry$what %>% unique()  ## rename Avg
+
+sberry$meas %>% unique()  ## rename marketing
+
+sberry$label %>% unique() ## rename harvest 
+
+sberry$DC_left_r %>% unique() # rename chemical_family
+
+tmp <- sberry$DC_right_r %>% unique() # rename materials --213
+
+tmp <- sberry$Value %>% unique() # values
+
+tmp <- sberry$units %>% unique() # Measures
+
+
+#sberry %<>% rename(Avg = what)
+#sberry %<>% rename(Marketing = meas, Harvest = label, Chem_family = DC_left_r, Materials = DC_right_r, Measures = units)
+#THese code don't work!!!So I use following code.
+
+colnames(sberry)[4]="Avg"
+colnames(sberry)[5]="Marketing"
+colnames(sberry)[6]="Harvest"
+colnames(sberry)[7]="Chem_family" 
+colnames(sberry)[8]="Materials" 
+colnames(sberry)[13]="Measures"
+
+colnames(sberry)
+
+sberry %<>% select(Year, State, type, Marketing, 
+                   Measures, Avg, Harvest, Chem_family,
+                   Materials, Chemical, Value)
+
+str_trim(paste(sberry$Marketing, sberry$Harvest)) %>% unique
+
+###  these belong in one column
+
+sberry %<>% mutate(production = str_trim(paste(Marketing, Harvest)))
+
+sberry %<>% select(Year, State, type, production, Measures,
+                   Avg, Chem_family, Materials, Chemical, Value)
+
+## I missed this one !!
+sberry %<>% mutate(Chemical = str_trim(paste(Chem_family, Chemical)))
+sberry %<>% select(Year, State, type, production, Avg, Measures, Materials, Chemical, Value)
+```
+Then I get the cleaned and orgainzed dataset "sberry".
+
+#### EDA
+
+```{r setup, include=FALSE}
+library(knitr)
+library(kableExtra)
+library(stats)
+## library(reshape2)
+library(tidyverse)
+library(magrittr)
+opts_chunk$set(echo = FALSE)
+```
+
+```{r}
+DF<-sberry
+DF$Value<-as.numeric(str_replace_all(sberry$Value,c(','='')))
+df<-filter(DF,Value!="NA" & Value!="D")
+```
+
+```{r}
+unique(df$State)
+#[1] "CALIFORNIA"     "FLORIDA"        "OTHER STATES"   "NEW YORK"       "NORTH CAROLINA" "OREGON"        
+#[7] "WASHINGTON"     "OHIO"           "PENNSYLVANIA"   "WISCONSIN"      "MICHIGAN"     
+freq<-table(df$State)
+# CALIFORNIA        FLORIDA       MICHIGAN       NEW YORK NORTH CAROLINA           OHIO         OREGON 
+#       1055            234              5             32             42              7             44 
+# OTHER STATES   PENNSYLVANIA     WASHINGTON      WISCONSIN 
+#           35              7             51              7 
+t<-c( 1055, 234, 5, 32, 42, 7, 44, 35, 7, 51, 7)
+d<-c("CALIFORNIA", "FLORIDA",  "MICHIGAN ", "NEW YORK", "NORTH CAROLINA", "OHIO", "OREGON", "OTHER STATES", 
+ "PENNSYLVANIA", "WASHINGTON", "WISCONSIN" )
+pct<-round(t/sum(t)*100)
+lb<-paste(d," ",pct,"%", sep="")
+mycolor <- rainbow(length(lb), alpha=0.4) 
+pie(t, labels=lb, explode=0.1, col=mycolor, main="Pies Chart with Percentages according to the State", cex=0.8)
+```
+
+```{r}
+#### Boxplot of different state
+bp1 <- ggplot(df, aes(x = State, y = Value))
+bp1 <- bp1 + geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1),
+        axis.text = element_text(size = 11),
+        axis.title = element_text(size = 13, face = "bold")) +
+  labs(x = "Different State")
+bp1
+```
+```{r}
+# excluding outliers
+bp2 <- ggplot(df, aes(x = State, y = Value))
+bp2 <- bp2 + geom_boxplot(outlier.colour = NA) +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1),
+        axis.text = element_text(size = 11),
+        axis.title = element_text(size = 13, face = "bold")) +
+   coord_cartesian(ylim = c(0, 9000000)) +
+  labs(x = "Different State")
+bp2
+```
+
+```{r}
+library(Rmisc)
+par(mfrow=c(1,2)) 
+## Different state with fixed chemical
+
+freq1<-table(df$Chemical)
+#(NITROGEN) FERTILIZER (PHOSPHATE) FERTILIZER    (POTASH) FERTILIZER    (SULFUR) FERTILIZER              FUNGICIDE 
+#                    20                     19                     20                     10                    506
+#             HERBICIDE            INSECTICIDE                  OTHER                  TOTAL 
+#                    64                    494                     83                    303 
+#Then we can pick FUNGICIDE and INSECTICIDE, which have relatively larger frequency
+#Chemical="FUNGICIDE“
+df_c1<-subset(df,df$Chemical=="FUNGICIDE" )
+bp_c1 <- ggplot(df_c1, aes(x = State, y = Value))
+bp_c1 <- bp_c1 + geom_boxplot(outlier.colour = NA) +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1),
+        axis.text = element_text(size = 11),
+        axis.title = element_text(size = 13, face = "bold")) +
+  coord_cartesian(ylim = c(0,3000)) +
+  labs(x = "Different State (Using FUNGICIDE)")
+#Chemical="INSECTICIDE“
+df_c2<-subset(df,df$Chemical=="INSECTICIDE" )
+bp_c2 <- ggplot(df_c2, aes(x = State, y = Value))
+bp_c2 <- bp_c2 + geom_boxplot(outlier.colour = NA) +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1),
+        axis.text = element_text(size = 11),
+        axis.title = element_text(size = 13, face = "bold")) +
+  coord_cartesian(ylim = c(0,3000)) +
+  labs(x = "Different State (Using INSECTICIDE)")
+multiplot(bp_c1,bp_c2,cols=2)
+```
+Analysis of EDA result:
+
+  Personally speaking, finding variable describing the most variance and calculating pca are not helpful don't really make sense in this EDA, because we have only one numeric variable. So, I choose "State", and focus on the relationship between variables "State" and "Value". 
+  First, I draw a pie chart displaying the frequency of different state. Obviously, California accounts for the highest proportion(69%) on frequency, followed by Florida with 15%. So, if the dataset show the production output, then from the pie chart, we know that Strawberries widely distributed. 
+  Then, I made two boxplots, one is a ordinary figure presenting the value corresponds identical states, the other deleted the outliers. From the second figure, we can find that though California has the highest frequency, it's "Value" datas are distributed near zero. 
+  Besides, I found the frequency of "Chemical" type. From the frequency value, we know that FUNGICIDE and INSECTICIDE are widely used. So I subset the datasets according to the two "chemical" type. And the following two boxplots both show that state OREGON use chemical on strawberry more.
+  
+Citations:
+  1.data cleaing and EDA:
+  Rmd file "ag_data.Rmd"(Class_17), MA615
+  Rmd file "EDA.Rmd"(Class_18), MA615
+  Robert I.Kabacoff. R in Action Data Analysis and Graphics with R Second Edition. Manning Publications. 2015.
+  2.Shiny:
+  https://rstudio.github.io/DT/
+  
